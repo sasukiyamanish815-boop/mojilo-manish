@@ -1,36 +1,54 @@
-name: Build Mojilo Manish APK
+name: Extract Mojilo Manish ZIP
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  extract:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      - name: Extract ZIP
+        run: |
+          ZIP_FILE=$(find . -maxdepth 1 -type f -name "*.zip" | head -n 1)
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ZIP file not found"
+            exit 1
+          fi
 
-      - name: Make gradlew executable
-        run: chmod +x gradlew
+          echo "Found ZIP: $ZIP_FILE"
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
+          mkdir -p extracted
+          unzip -o "$ZIP_FILE" -d extracted
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mojilo-Manish-APK
-          path: '**/build/outputs/apk/debug/*.apk'
+          PROJECT_DIR=$(find extracted -name gradlew -type f -exec dirname {} \; | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "gradlew not found inside ZIP"
+            echo "ZIP contents:"
+            find extracted -maxdepth 4 -type f | head -100
+            exit 1
+          fi
+
+          echo "Android project found at: $PROJECT_DIR"
+
+          cp -R "$PROJECT_DIR"/. .
+
+          rm -rf extracted
+          rm -f "$ZIP_FILE"
+
+      - name: Commit extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git diff --cached --quiet || git commit -m "Extract Mojilo Manish project [skip ci]"
+          git push
